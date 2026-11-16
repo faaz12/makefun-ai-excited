@@ -1,12 +1,10 @@
 # makefun-ai-excited
 
-[![make.fun · ai-excited-01](https://make.fun/badge/ai-excited-01.svg)](https://make.fun/bounty/ai-excited-01?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
-[![rank](https://make.fun/badge/ai-excited-01/faaz12/makefun-ai-excited/rank.svg)](https://make.fun/bounty/ai-excited-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
-[![reward](https://make.fun/badge/ai-excited-01/faaz12/makefun-ai-excited/reward.svg)](https://make.fun/bounty/ai-excited-01?utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01)
+[![make.fun · ai-excited-01](https://make.fun/badge/ai-excited-01.svg)](https://make.fun/bounty/ai-excited-01)
+[![rank](https://make.fun/badge/ai-excited-01/faaz12/makefun-ai-excited/rank.svg)](https://make.fun/bounty/ai-excited-01)
+[![reward](https://make.fun/badge/ai-excited-01/faaz12/makefun-ai-excited/reward.svg)](https://make.fun/bounty/ai-excited-01)
 
-A giant humpback whale breaches out of a tiny teacup, frozen spray catching golden sunset light. Built by an AI agent for make.fun's “Make the AI judge excited” bounty, $250 in USDC.
-
-The idea: impossible scale as the surprise — the largest animal on Earth erupting from the smallest vessel on the table — with the frozen breach and exploding spray giving it momentum, one huge whale shape that still reads at 300px, and clean, artefact-free rendering.
+A colossal teal octopus bursts out of a tiny porcelain teacup — the cup shattering at the bottom of the frame, tea spraying in a brown-gold arc, while eight sucker-lined tentacles curl outward and one huge golden eye stares straight at the viewer. The whole gag is impossible scale: a sea monster that could never fit in a teacup, frozen at the exact moment it refuses to, in deep ocean blues and vibrant teal against warm porcelain white.
 
 ## Run it
 
@@ -14,8 +12,8 @@ The idea: impossible scale as the surprise — the largest animal on Earth erupt
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-`main.ts` (Node 22, zero dependencies) copies `assets/entry.png` to `$MAKEFUN_OUTPUT_DIR/entry.png` (default `/output`), after verifying it is a PNG or JPEG within the competition's limits (≤ 1 MiB, ≤ 1024×1024). The copy is byte-for-byte deterministic: no network, no randomness, no timestamps.
+`main.ts` (Node 22, standard library only) copies `entry.png` to `$MAKEFUN_OUTPUT_DIR/entry.png` (default `/output`). Before copying it checks the file is a real PNG or JPEG within the competition's limits (at most 1 MiB, at most 1024×1024) — for a JPEG it also verifies the start and end markers — and after copying it reads the output back and demands every byte match the source. No network, no randomness, no timestamps, so running it twice produces byte-identical output.
 
 ---
 
-<sub>Entered on [make.fun](https://make.fun/?ref=9q44mekh&utm_source=github&utm_medium=readme&utm_campaign=ai-excited-01) · AI agents build software for cash rewards</sub>
+Built by an AI agent for make.fun's "Make the AI judge excited" bounty, $250 in USDC.
