@@ -1,134 +1,136 @@
-// makefun-ai-excited — entry for make.fun bounty ai-excited-01.
+// Entry program for make.fun — ai-excited-01 ("Make the AI judge excited").
 //
-// The picture this program ships: a gigantic teal octopus exploding out
-// of a tiny blue-patterned porcelain teacup. The cup shatters at the
-// bottom of the frame, tea spraying in a brown-gold arc, while the
-// octopus fills the whole scene with curling, sucker-lined arms and one
-// huge golden eye staring straight at the viewer. The joke is the
-// impossible scale — a sea monster that could never fit in a teacup,
-// caught at the exact instant it refuses to.
+// The artwork: an enormous teal octopus erupting from a delicate little
+// teacup. Porcelain shards fly, brown tea arcs through deep blue water,
+// sucker-ringed arms curl in every direction, and a single huge golden
+// eye locks onto the viewer. The whole point is the absurd mismatch of
+// scale — a monster of the deep that plainly cannot fit in a teacup,
+// caught mid-escape at the most dramatic split second.
 //
-// What this file does: it takes the finished image sitting next to it
-// (entry.png) and drops an exact copy into the output folder, checking
-// along the way that the file is a real image inside the competition's
-// limits. Node 22, standard library only, no network, no randomness,
-// no timestamps — run it twice and the output is identical both times.
+// How this program works: the finished picture already lives beside this
+// file as entry.png, and this script simply places an exact duplicate of
+// it at $MAKEFUN_OUTPUT_DIR/entry.png (or /output/entry.png when that
+// variable is unset). Before writing anything it sanity-checks the
+// picture — right file type, inside the size caps, properly terminated —
+// and after writing it reads the result back and insists on a perfect
+// byte-for-byte match. It uses only the Node 22 standard library, never
+// touches the network, and has no randomness or clock in it anywhere,
+// so two runs always land on identical bytes. The picture is checked
+// but never re-encoded, so nothing about it can drift between runs.
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const SOURCE_PATH = join(HERE, "entry.png");
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-const TARGET_PATH = join(OUTPUT_DIR, "entry.png");
+// Where the source picture lives, and where the finished copy must go.
+const repoDir = dirname(fileURLToPath(import.meta.url));
+const sourceFile = resolve(repoDir, "entry.png");
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+const outFile = resolve(outDir, "entry.png");
 
-// Competition limits: the image must be at most 1 MiB and at most
-// 1024 pixels on each side.
-const MAX_BYTES = 1048576;
-const MAX_SIDE = 1024;
+// The competition's caps: no more than 1 MiB, no side longer than 1024 px.
+const BYTE_CAP = 1024 * 1024;
+const EDGE_CAP = 1024;
 
-// First bytes of a JPEG file and last bytes of a JPEG file.
-const JPEG_START = Buffer.from([0xff, 0xd8]);
-const JPEG_END = Buffer.from([0xff, 0xd9]);
-// First bytes of a PNG file.
-const PNG_START = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG_MAGIC = [0xff, 0xd8];
+const JPEG_TAIL = [0xff, 0xd9];
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-// Pull the width and height out of the image header so we can enforce
-// the size limit without decoding any pixels. PNG keeps them in the
-// IHDR chunk; JPEG keeps them in the first Start-Of-Frame segment.
-function readDimensions(bytes: Buffer): { width: number; height: number } {
-  if (bytes.subarray(0, PNG_START.length).equals(PNG_START)) {
-    if (bytes.length < 24) {
-      throw new Error("entry.png is a truncated PNG");
-    }
-    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
-  }
-  if (bytes.subarray(0, 2).equals(JPEG_START)) {
-    // Walk the JPEG segments (each starts with 0xFF and carries its own
-    // length) until we reach a Start-Of-Frame marker, which stores
-    // height first and then width.
-    let pos = 2;
-    while (pos + 9 < bytes.length) {
-      if (bytes[pos] !== 0xff) {
-        throw new Error("entry.png is a malformed JPEG");
-      }
-      const marker = bytes[pos + 1];
-      // Standalone markers (SOI, EOI, TEM, RST0–RST7) carry no length
-      // field, so step past them instead of reading a length that
-      // isn't there.
-      if (
-        marker === 0xd8 ||
-        marker === 0xd9 ||
-        marker === 0x01 ||
-        (marker >= 0xd0 && marker <= 0xd7)
-      ) {
-        pos += 2;
-        continue;
-      }
-      const segmentLength = bytes.readUInt16BE(pos + 2);
-      if (segmentLength < 2) {
-        throw new Error("entry.png is a malformed JPEG");
-      }
-      const isFrame =
-        marker >= 0xc0 &&
-        marker <= 0xcf &&
-        marker !== 0xc4 &&
-        marker !== 0xc8 &&
-        marker !== 0xcc;
-      if (isFrame) {
-        return {
-          width: bytes.readUInt16BE(pos + 7),
-          height: bytes.readUInt16BE(pos + 5),
-        };
-      }
-      pos += 2 + segmentLength;
-    }
-    throw new Error("entry.png is a JPEG with no frame marker");
-  }
-  throw new Error("entry.png is neither a PNG nor a JPEG");
+function die(message: string): never {
+  throw new Error(message);
 }
 
-if (!existsSync(SOURCE_PATH)) {
-  throw new Error(`entry.png is missing next to main.ts (${SOURCE_PATH})`);
+function startsWith(bytes: Buffer, magic: number[]): boolean {
+  return magic.every((byte, i) => bytes[i] === byte);
 }
 
-const source = readFileSync(SOURCE_PATH);
+type Size = { width: number; height: number };
 
-if (source.length === 0 || source.length > MAX_BYTES) {
-  throw new Error(
-    `entry.png is ${source.length} bytes; it must be between 1 and ${MAX_BYTES} bytes`,
+// A PNG stores its width and height right after the 8-byte signature:
+// bytes 16-19 are the width, 20-23 the height, both big-endian.
+function pngSize(bytes: Buffer): Size {
+  if (bytes.length < 24) die("entry.png is a PNG too short to hold a header");
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+// A JPEG is a chain of segments, each opening with 0xFF plus a marker
+// byte and (usually) a 2-byte length. Walk the chain until a frame
+// marker (SOF0-SOF15, skipping the ones that are not frames) turns up;
+// it stores the height first, then the width.
+function jpegSize(bytes: Buffer): Size {
+  let cursor = 2;
+  while (cursor + 9 < bytes.length) {
+    if (bytes[cursor] !== 0xff) die("entry.png is a JPEG with a broken segment");
+    const marker = bytes[cursor + 1];
+    const noLength =
+      marker === 0xd8 || marker === 0xd9 || marker === 0x01 ||
+      (marker >= 0xd0 && marker <= 0xd7);
+    if (noLength) {
+      cursor += 2;
+      continue;
+    }
+    const segLen = bytes.readUInt16BE(cursor + 2);
+    if (segLen < 2) die("entry.png is a JPEG with a broken segment length");
+    const isFrameMarker =
+      marker >= 0xc0 && marker <= 0xcf &&
+      marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isFrameMarker) {
+      return {
+        height: bytes.readUInt16BE(cursor + 5),
+        width: bytes.readUInt16BE(cursor + 7),
+      };
+    }
+    cursor += 2 + segLen;
+  }
+  die("entry.png is a JPEG with no frame segment");
+  throw new Error("unreachable");
+}
+
+function run(): void {
+  if (!existsSync(sourceFile)) {
+    die(`entry.png is missing — expected it next to main.ts at ${sourceFile}`);
+  }
+  const picture = readFileSync(sourceFile);
+
+  if (picture.length === 0) die("entry.png is empty");
+  if (picture.length > BYTE_CAP) {
+    die(`entry.png is ${picture.length} bytes, over the ${BYTE_CAP}-byte cap`);
+  }
+
+  const isJpeg = startsWith(picture, JPEG_MAGIC);
+  const isPng = startsWith(picture, PNG_MAGIC);
+  if (!isJpeg && !isPng) die("entry.png is neither JPEG nor PNG");
+
+  if (isJpeg) {
+    const tail = picture.subarray(picture.length - 2);
+    if (!startsWith(tail, JPEG_TAIL)) {
+      die("entry.png is a JPEG missing its closing end marker");
+    }
+  }
+
+  const size: Size = isPng ? pngSize(picture) : jpegSize(picture);
+  if (size.width > EDGE_CAP || size.height > EDGE_CAP) {
+    die(
+      `entry.png is ${size.width}x${size.height}px, over the ${EDGE_CAP}px cap`,
+    );
+  }
+  if (size.width === 0 || size.height === 0) {
+    die("entry.png reports a zero width or height");
+  }
+
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(outFile, picture);
+
+  // Read the copy back and demand it match the source byte for byte.
+  const shipped = readFileSync(outFile);
+  if (!shipped.equals(picture)) {
+    die("the entry.png written to the output folder does not match the source");
+  }
+
+  console.log(
+    `wrote ${outFile} — ${shipped.length} bytes, ` +
+      `${size.width}x${size.height}, ${isJpeg ? "JPEG" : "PNG"}`,
   );
 }
 
-const isJpeg = source.subarray(0, 2).equals(JPEG_START);
-const isPng = source.subarray(0, PNG_START.length).equals(PNG_START);
-if (isJpeg) {
-  // A well-formed JPEG opens with SOI and closes with EOI; if either
-  // end is wrong the file is damaged, so refuse to ship it.
-  if (!source.subarray(source.length - 2).equals(JPEG_END)) {
-    throw new Error("entry.png is a JPEG missing its end marker");
-  }
-} else if (!isPng) {
-  throw new Error("entry.png is neither a PNG nor a JPEG");
-}
-
-const { width, height } = readDimensions(source);
-if (width > MAX_SIDE || height > MAX_SIDE) {
-  throw new Error(
-    `entry.png is ${width}x${height}; each side must be at most ${MAX_SIDE}px`,
-  );
-}
-
-mkdirSync(OUTPUT_DIR, { recursive: true });
-copyFileSync(SOURCE_PATH, TARGET_PATH);
-
-// Prove the copy is exact: read it back and demand every byte match.
-const written = readFileSync(TARGET_PATH);
-if (written.length !== source.length || !written.equals(source)) {
-  throw new Error("the copied entry.png does not match the source");
-}
-
-console.log(
-  `wrote ${TARGET_PATH} (${written.length} bytes, ${width}x${height}, ${isJpeg ? "JPEG" : "PNG"})`,
-);
+run();
